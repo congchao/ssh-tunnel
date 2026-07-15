@@ -25,6 +25,40 @@ yarn tauri dev
 
 > 如仅需启动前端调试：`yarn dev`
 
+## Release 打包
+
+一键构建 macOS x64、macOS arm64、Windows x64 release 包：
+
+```bash
+yarn release
+```
+
+构建 macOS x64 release 包：
+
+```bash
+yarn release:mac:x64
+```
+
+构建 macOS arm64 release 包：
+
+```bash
+yarn release:mac:arm64
+```
+
+构建 Windows x64 release 包：
+
+```bash
+yarn release:windows:x64
+```
+
+如缺少 Rust target，可先安装：
+
+```bash
+rustup target add x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc
+```
+
+> Windows x64 包通常需要在 Windows 环境或配置好对应交叉编译/打包工具链的环境中构建。
+
 ## 界面截图
 
 ### 运行界面
@@ -34,4 +68,3 @@ yarn tauri dev
 ### 配置界面
 
 ![配置界面](docs/setting.png)
-
