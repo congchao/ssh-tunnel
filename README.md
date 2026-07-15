@@ -36,19 +36,19 @@ yarn release
 构建 macOS x64 release 包：
 
 ```bash
-yarn release:mac:x64
+yarn package:mac:x64
 ```
 
 构建 macOS arm64 release 包：
 
 ```bash
-yarn release:mac:arm64
+yarn package:mac:arm64
 ```
 
 构建 Windows x64 release 包：
 
 ```bash
-yarn release:windows:x64
+yarn package:win:amd64
 ```
 
 如缺少 Rust target，可先安装：
@@ -58,6 +58,7 @@ rustup target add x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msv
 ```
 
 > Windows x64 包通常需要在 Windows 环境或配置好对应交叉编译/打包工具链的环境中构建。
+> 旧命令 `yarn release:mac:x64`、`yarn release:mac:arm64`、`yarn release:windows:x64` 仍可使用。
 
 ## 界面截图
 

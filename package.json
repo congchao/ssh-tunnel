@@ -9,9 +9,12 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "release": "bash scripts/release.sh",
-    "release:mac:x64": "tauri build --target x86_64-apple-darwin --ci",
-    "release:mac:arm64": "tauri build --target aarch64-apple-darwin --ci",
-    "release:windows:x64": "tauri build --target x86_64-pc-windows-msvc --ci"
+    "package:mac:arm64": "bash scripts/build-macos-arm64.sh",
+    "package:mac:x64": "bash scripts/build-macos-x64.sh",
+    "package:win:amd64": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-amd64.ps1",
+    "release:mac:x64": "yarn package:mac:x64",
+    "release:mac:arm64": "yarn package:mac:arm64",
+    "release:windows:x64": "yarn package:win:amd64"
   },
   "dependencies": {
     "vue": "^3.5.13",
