@@ -36,6 +36,8 @@ struct PortMapping {
     remote_port: u16,
     local_host: Option<String>,
     local_port: u16,
+    #[serde(default)]
+    remark: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,13 +287,166 @@ fn open_db(app: &AppHandle) -> Result<Connection, String> {
     if let Some(parent) = db_path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("无法创建配置目录: {}", err))?;
     }
-    let conn = Connection::open(db_path).map_err(|err| format!("无法打开数据库: {}", err))?;
+    let mut conn = Connection::open(db_path).map_err(|err| format!("无法打开数据库: {}", err))?;
+    init_db(&mut conn)?;
+    migrate_legacy_config(&mut conn)?;
+    Ok(conn)
+}
+
+fn init_db(conn: &mut Connection) -> Result<(), String> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
         [],
     )
     .map_err(|err| format!("初始化数据库失败: {}", err))?;
-    Ok(conn)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ssh_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            host TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL
+        )",
+        [],
+    )
+    .map_err(|err| format!("初始化 SSH 配置表失败: {}", err))?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS port_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position INTEGER NOT NULL,
+            remote_host TEXT NOT NULL,
+            remote_port INTEGER NOT NULL,
+            local_host TEXT NOT NULL,
+            local_port INTEGER NOT NULL,
+            remark TEXT NOT NULL DEFAULT ''
+        )",
+        [],
+    )
+    .map_err(|err| format!("初始化端口映射表失败: {}", err))?;
+    Ok(())
+}
+
+fn migrate_legacy_config(conn: &mut Connection) -> Result<(), String> {
+    let structured_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ssh_config", [], |row| row.get(0))
+        .map_err(|err| format!("检查配置迁移状态失败: {}", err))?;
+    if structured_count > 0 {
+        return Ok(());
+    }
+
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            params![CONFIG_KEY],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| format!("读取旧配置失败: {}", err))?;
+
+    let Some(json) = value else {
+        return Ok(());
+    };
+
+    let config: TunnelConfig =
+        serde_json::from_str(&json).map_err(|err| format!("迁移旧配置失败: {}", err))?;
+    save_config_to_db(conn, &config)?;
+    conn.execute(
+        "DELETE FROM app_settings WHERE key = ?1",
+        params![CONFIG_KEY],
+    )
+    .map_err(|err| format!("清理旧配置失败: {}", err))?;
+    Ok(())
+}
+
+fn save_config_to_db(conn: &mut Connection, config: &TunnelConfig) -> Result<(), String> {
+    let tx = conn
+        .transaction()
+        .map_err(|err| format!("开始保存配置失败: {}", err))?;
+    tx.execute("DELETE FROM ssh_config", [])
+        .map_err(|err| format!("清理 SSH 配置失败: {}", err))?;
+    tx.execute("DELETE FROM port_mappings", [])
+        .map_err(|err| format!("清理端口映射失败: {}", err))?;
+    tx.execute(
+        "INSERT INTO ssh_config (id, host, port, username, password)
+         VALUES (1, ?1, ?2, ?3, ?4)",
+        params![
+            config.ssh.host,
+            config.ssh.port,
+            config.ssh.username,
+            config.ssh.password
+        ],
+    )
+    .map_err(|err| format!("保存 SSH 配置失败: {}", err))?;
+
+    for (index, mapping) in config.mappings.iter().enumerate() {
+        let local_host = mapping
+            .local_host
+            .clone()
+            .unwrap_or_else(|| "0.0.0.0".to_string());
+        tx.execute(
+            "INSERT INTO port_mappings (
+                position, remote_host, remote_port, local_host, local_port, remark
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                index as i64,
+                mapping.remote_host,
+                mapping.remote_port,
+                local_host,
+                mapping.local_port,
+                mapping.remark
+            ],
+        )
+        .map_err(|err| format!("保存端口映射失败: {}", err))?;
+    }
+
+    tx.commit()
+        .map_err(|err| format!("提交配置保存失败: {}", err))?;
+    Ok(())
+}
+
+fn load_config_from_db(conn: &Connection) -> Result<Option<TunnelConfig>, String> {
+    let ssh = conn
+        .query_row(
+            "SELECT host, port, username, password FROM ssh_config WHERE id = 1",
+            [],
+            |row| {
+                Ok(SshConfig {
+                    host: row.get(0)?,
+                    port: row.get(1)?,
+                    username: row.get(2)?,
+                    password: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|err| format!("读取 SSH 配置失败: {}", err))?;
+
+    let Some(ssh) = ssh else {
+        return Ok(None);
+    };
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT remote_host, remote_port, local_host, local_port, remark
+             FROM port_mappings
+             ORDER BY position ASC, id ASC",
+        )
+        .map_err(|err| format!("读取端口映射失败: {}", err))?;
+    let mappings = stmt
+        .query_map([], |row| {
+            Ok(PortMapping {
+                remote_host: row.get(0)?,
+                remote_port: row.get(1)?,
+                local_host: Some(row.get(2)?),
+                local_port: row.get(3)?,
+                remark: row.get(4)?,
+            })
+        })
+        .map_err(|err| format!("读取端口映射失败: {}", err))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("解析端口映射失败: {}", err))?;
+
+    Ok(Some(TunnelConfig { ssh, mappings }))
 }
 
 async fn run_listener(
@@ -579,35 +734,14 @@ fn tunnel_status(state: State<TunnelState>) -> Result<bool, String> {
 
 #[tauri::command]
 fn save_config(app: AppHandle, config: TunnelConfig) -> Result<(), String> {
-    let conn = open_db(&app)?;
-    let payload =
-        serde_json::to_string(&config).map_err(|err| format!("序列化配置失败: {}", err))?;
-    conn.execute(
-        "INSERT INTO app_settings (key, value) VALUES (?1, ?2) \
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![CONFIG_KEY, payload],
-    )
-    .map_err(|err| format!("保存配置失败: {}", err))?;
-    Ok(())
+    let mut conn = open_db(&app)?;
+    save_config_to_db(&mut conn, &config)
 }
 
 #[tauri::command]
 fn load_config(app: AppHandle) -> Result<Option<TunnelConfig>, String> {
     let conn = open_db(&app)?;
-    let value: Option<String> = conn
-        .query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            params![CONFIG_KEY],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|err| format!("读取配置失败: {}", err))?;
-    if let Some(json) = value {
-        let config = serde_json::from_str(&json).map_err(|err| format!("解析配置失败: {}", err))?;
-        Ok(Some(config))
-    } else {
-        Ok(None)
-    }
+    load_config_from_db(&conn)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -669,4 +803,87 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_config() -> TunnelConfig {
+        TunnelConfig {
+            ssh: SshConfig {
+                host: "example.com".to_string(),
+                port: 22,
+                username: "user".to_string(),
+                password: "secret".to_string(),
+            },
+            mappings: vec![
+                PortMapping {
+                    remote_host: "db.internal".to_string(),
+                    remote_port: 5432,
+                    local_host: Some("127.0.0.1".to_string()),
+                    local_port: 15432,
+                    remark: "postgres".to_string(),
+                },
+                PortMapping {
+                    remote_host: "redis.internal".to_string(),
+                    remote_port: 6379,
+                    local_host: None,
+                    local_port: 16379,
+                    remark: "".to_string(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn saves_and_loads_structured_config() {
+        let mut conn = Connection::open_in_memory().expect("open memory db");
+        init_db(&mut conn).expect("init db");
+
+        let config = sample_config();
+        save_config_to_db(&mut conn, &config).expect("save config");
+
+        let loaded = load_config_from_db(&conn)
+            .expect("load config")
+            .expect("config exists");
+        assert_eq!(loaded.ssh.host, "example.com");
+        assert_eq!(loaded.mappings.len(), 2);
+        assert_eq!(loaded.mappings[0].remark, "postgres");
+        assert_eq!(
+            loaded.mappings[1].local_host.as_deref(),
+            Some("0.0.0.0")
+        );
+    }
+
+    #[test]
+    fn migrates_legacy_json_config() {
+        let mut conn = Connection::open_in_memory().expect("open memory db");
+        init_db(&mut conn).expect("init db");
+
+        let config = sample_config();
+        let payload = serde_json::to_string(&config).expect("serialize config");
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?1, ?2)",
+            params![CONFIG_KEY, payload],
+        )
+        .expect("insert legacy config");
+
+        migrate_legacy_config(&mut conn).expect("migrate config");
+
+        let loaded = load_config_from_db(&conn)
+            .expect("load config")
+            .expect("config exists");
+        assert_eq!(loaded.ssh.username, "user");
+        assert_eq!(loaded.mappings[0].remote_host, "db.internal");
+
+        let legacy_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM app_settings WHERE key = ?1",
+                params![CONFIG_KEY],
+                |row| row.get(0),
+            )
+            .expect("count legacy rows");
+        assert_eq!(legacy_count, 0);
+    }
 }

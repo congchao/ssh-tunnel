@@ -603,12 +603,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .app {
-  min-height: 100vh;
+  height: 100vh;
   background: #f7f9fc;
   color: #1c2a3a;
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
 .topbar {
@@ -655,6 +656,7 @@ onBeforeUnmount(() => {
 
 .log-panel {
   flex: 1;
+  min-height: 0;
   padding: 24px;
   overflow: auto;
   background: #ffffff;
@@ -670,7 +672,7 @@ onBeforeUnmount(() => {
 }
 
 .config-mask {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: rgba(240, 244, 250, 0.9);
   display: flex;
@@ -682,7 +684,9 @@ onBeforeUnmount(() => {
 
 .config-panel {
   width: 100%;
-  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   background: #f5f7fb;
   color: #1b2b4a;
   border-radius: 0;
@@ -692,6 +696,7 @@ onBeforeUnmount(() => {
 }
 
 .config-header {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -724,6 +729,7 @@ onBeforeUnmount(() => {
   gap: 16px;
   overflow: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .ssh-form :deep(.ant-form-item) {
