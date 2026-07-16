@@ -45,83 +45,12 @@ type Locale = "zh" | "en";
 
 const defaultConfig: TunnelConfig = {
   ssh: {
-    host: "mnet.ds-int.cn",
-    port: 56000,
+    host: "",
+    port: 22,
     username: "",
-    password: "..",
+    password: "",
   },
-  mappings: [
-    {
-      remoteHost: "mysql8-proxy.auto.ds-int.cn",
-      remotePort: 6428,
-      localHost: "0.0.0.0",
-      localPort: 6428,
-      remark: "",
-    },
-    {
-      remoteHost: "redis-proxy.radar.ds-int.cn",
-      remotePort: 7031,
-      localHost: "0.0.0.0",
-      localPort: 7031,
-      remark: "",
-    },
-    {
-      remoteHost: "n1.auto.es.hdp",
-      remotePort: 9256,
-      localHost: "0.0.0.0",
-      localPort: 9256,
-      remark: "",
-    },
-    {
-      remoteHost: "172.16.40.120",
-      remotePort: 9250,
-      localHost: "0.0.0.0",
-      localPort: 9250,
-      remark: "",
-    },
-    {
-      remoteHost: "172.16.40.254",
-      remotePort: 443,
-      localHost: "0.0.0.0",
-      localPort: 443,
-      remark: "",
-    },
-    {
-      remoteHost: "172.21.17.120",
-      remotePort: 35432,
-      localHost: "0.0.0.0",
-      localPort: 35432,
-      remark: "",
-    },
-    {
-      remoteHost: "172.21.22.20",
-      remotePort: 30364,
-      localHost: "0.0.0.0",
-      localPort: 30364,
-      remark: "",
-    },
-    {
-      remoteHost: "172.21.22.20",
-      remotePort: 32270,
-      localHost: "0.0.0.0",
-      localPort: 32270,
-      remark: "",
-    },
-    {
-      remoteHost: "172.21.22.20",
-      remotePort: 32476,
-      localHost: "0.0.0.0",
-      localPort: 32476,
-      remark: "",
-    },
-    {
-      remoteHost: "pg-proxy.auto.ds-int.cn",
-      remotePort: 5408,
-      localHost: "0.0.0.0",
-      localPort: 5408,
-      remark: "",
-    },
-  ],
+  mappings: [],
 };
 
 const ssh = ref<SshConfig>({ ...defaultConfig.ssh });
@@ -173,7 +102,7 @@ const messages = {
     hint:
       "本地监听地址建议使用 127.0.0.1（仅本机）或 0.0.0.0（局域网访问）。",
     placeholderRemoteHost: "remote.host",
-    placeholderHost: "mnet.ds-int.cn",
+    placeholderHost: "ssh.example.com",
     placeholderUser: "user",
     placeholderRemark: "备注",
     saveSuccess: "配置已保存到本地数据库",
@@ -207,7 +136,7 @@ const messages = {
     password: "Password",
     hint: "Use 127.0.0.1 (local only) or 0.0.0.0 (LAN access).",
     placeholderRemoteHost: "remote.host",
-    placeholderHost: "mnet.ds-int.cn",
+    placeholderHost: "ssh.example.com",
     placeholderUser: "user",
     placeholderRemark: "Remark",
     saveSuccess: "Config saved",

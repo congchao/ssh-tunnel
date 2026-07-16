@@ -111,6 +111,12 @@ AWS_LC_SYS_C_STD=11
 CFLAGS=/std:c11
 ```
 
+If the build fails while linking `aws-lc-sys` with unresolved symbols such as `__builtin_bswap32`, make sure you are using the latest Windows build script. It maps those builtins to the MSVC byte-swap intrinsics:
+
+```powershell
+CFLAGS=/FIstdlib.h /D__builtin_bswap16=_byteswap_ushort /D__builtin_bswap32=_byteswap_ulong /D__builtin_bswap64=_byteswap_uint64
+```
+
 After changing compiler flags, clean the previous Rust target cache before retrying:
 
 ```powershell
